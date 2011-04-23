@@ -9,8 +9,10 @@ PYCDG_PATH='/Users/adam/Downloads/pykaraoke-0.7.3/'
 
 def create_db_tables():
 	conn = sqlite3.connect(SQLITE_DB)
-	c=conn.cursor().execute('''CREATE TABLE IF NOT EXISTS songs (id INTEGER PRIMARY KEY, filename TEXT UNIQUE)''')
-	c=conn.cursor().execute('''CREATE TABLE IF NOT EXISTS playlist (id INTEGER PRIMARY KEY, song_id INTEGER, played BOOLEAN, timestamp TIMESTAMP, nick TEXT)''')
+	c=conn.cursor().execute('''CREATE TABLE IF NOT EXISTS songs (id INTEGER PRIMARY KEY, filename TEXT UNIQUE);''')
+	c=conn.cursor().execute('''CREATE TABLE IF NOT EXISTS playlist (id INTEGER PRIMARY KEY, song_id INTEGER, played BOOLEAN, timestamp TIMESTAMP, nick TEXT);''')
+	c=conn.cursor().execute('''CREATE TABLE IF NOT EXISTS abort (id INTEGER PRIMARY KEY, abort BOOLEAN);''')
+	c=conn.cursor().execute('''INSERT OR IGNORE INTO abort ( id, abort ) VALUES ( 1, 0 );''')
 	conn.commit()
 	conn.close()
 
@@ -20,6 +22,22 @@ def insert_song(fileName):
 	c = cn.cursor().execute("""INSERT OR IGNORE INTO songs (filename) VALUES (?);""", [fileName])
 	cn.commit()	
 	cn.close()
+
+def set_abort(abort):
+	cn = sqlite3.connect(SQLITE_DB)
+	cn.text_factory = str
+	c = cn.cursor().execute("""UPDATE abort SET abort = ? WHERE id = 1;""", [abort])
+	cn.commit()	
+	cn.close()
+
+def check_abort():
+	cn = sqlite3.connect(SQLITE_DB)
+	cn.text_factory = str
+	c = cn.cursor().execute("""SELECT abort FROM abort;""")
+	ret = c.fetchone()
+	cn.commit()	
+	cn.close()
+	return not (ret is None or ret[0] == 0)
 
 def get_song(songID):
 	cn = sqlite3.connect(SQLITE_DB)
@@ -119,7 +137,6 @@ def play(phenny, input):
 		phenny.say("Play command requires a numeric argument...")
 		return
 
-	print "Args: " + args[0] + "."
 	song = get_song(args[0])
 
 	if song == None or len(song) < 2:
@@ -140,6 +157,13 @@ def queue(phenny, input):
 
 queue.commands = ['queue']
 queue.priority = 'medium'
+
+def abort(phenny, input):
+	set_abort(1)
+
+abort.commands = ['abort']
+abort.priority = 'medium'
+
 
 def get_cdg_files(dir):
 	basedir = dir
@@ -174,7 +198,13 @@ def setup(phenny):
 					phenny.msg(channel, res[2] + " Will Now Be Singing " + str(res[0]))
 
 				playCMD = PYCDG_PATH + '/pycdg.py'
-				subprocess.call(["python", playCMD, "-w 800", "-h 600", res[0]])
+				p = subprocess.Popen(["python", playCMD, "-w 800", "-h 600", res[0]])
+
+				while p.poll() is None:
+					if check_abort():
+						p.terminate()
+						set_abort(0)
+					time.sleep(1)
 
 				for channel in phenny.config.channels:
 					phenny.msg(channel, "Done playing: " + str(res[0]))
