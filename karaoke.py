@@ -4,7 +4,7 @@ import os, re, time, threading, datetime, subprocess
 import sqlite3
 
 SQLITE_DB='/tmp/example.db'
-CDG_DIR='/Volumes/Karaoke/'
+CDG_DIR='/tmp/cdg'
 PYCDG_PATH='/Users/adam/Downloads/pykaraoke-0.7.3/'
 
 def create_db_tables():
@@ -25,6 +25,14 @@ def get_song(songID):
 	cn = sqlite3.connect(SQLITE_DB)
 	cn.text_factory = str
 	c = cn.cursor().execute("""SELECT filename, id FROM songs WHERE id = ?;""", [songID])
+	ret = c.fetchone()
+	cn.close()
+	return ret
+
+def get_queue_count():
+	cn = sqlite3.connect(SQLITE_DB)
+	cn.text_factory = str
+	c = cn.cursor().execute("""SELECT count(*) FROM playlist WHERE played = 0;""")
 	ret = c.fetchone()
 	cn.close()
 	return ret
@@ -103,7 +111,21 @@ rebuild_cache.priority = 'medium'
 
 def play(phenny, input):
 	args = re.sub("\.play\ ?", "", input).split(" ")
+
+	if len(args) < 1 or len(args[0]) < 1:
+		phenny.say("Play command requires 1 argument...")
+		return
+	elif not str(args[0]).isdigit():
+		phenny.say("Play command requires a numeric argument...")
+		return
+
+	print "Args: " + args[0] + "."
 	song = get_song(args[0])
+
+	if song == None or len(song) < 2:
+		phenny.say("Song ID " + args[0] + " not found...")
+		return
+
 	playFile = str(song[0])
 	playId = str(song[1])
 	phenny.say("Queueing file: " + playFile)
@@ -111,6 +133,13 @@ def play(phenny, input):
 
 play.commands = ['play']
 play.priority = 'medium'
+
+def queue(phenny, input):
+	res = get_queue_count()
+	phenny.say("There are currently " + str(res[0]) + " songs waiting to play...")
+
+queue.commands = ['queue']
+queue.priority = 'medium'
 
 def get_cdg_files(dir):
 	basedir = dir
