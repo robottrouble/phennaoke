@@ -101,7 +101,7 @@ def find(phenny, input):
 		phenny.write(('PRIVMSG', input.nick), "Search query must be 3 or more characters")
 		return
 
-	retStr = "Results for search: " + (" ").join(sWords)
+	retStr = "Results for search: %s" % ((" ").join(sWords))
 	phenny.write(('PRIVMSG', input.nick), retStr)
 
 	for row in search_songs(sWords):
@@ -119,7 +119,7 @@ def rebuild_cache(phenny, input):
 		return
 
 	files = get_cdg_files(CDG_DIR)
-	phenny.say("Updating cache for " + str(len(files)) + " files...")
+	phenny.say("Updating cache for %d files..." % (len(files)))
 
 	for file in files:
 		insert_song(file)
@@ -143,12 +143,12 @@ def play(phenny, input):
 	song = get_song(args[0])
 
 	if song == None or len(song) < 2:
-		phenny.say("Song ID " + args[0] + " not found...")
+		phenny.say("Song ID %d not found..." % (res[0]))
 		return
 
 	playFile = str(song[0])
 	playId = str(song[1])
-	phenny.say("Queueing file: " + playFile)
+	phenny.say("Queueing file: %s" % (playFile))
 	queue_song(input.nick, playId)
 
 play.commands = ['play']
@@ -156,7 +156,7 @@ play.priority = 'medium'
 
 def queue(phenny, input):
 	res = get_queue_count()
-	phenny.say("There are currently " + str(res[0]) + " songs waiting to play...")
+	phenny.say("There are currently %s songs waiting to play..." % (res[0]))
 
 queue.commands = ['queue']
 queue.priority = 'medium'
@@ -199,7 +199,7 @@ def setup(phenny):
 				cn.commit()
 
 				for channel in phenny.config.channels:
-					phenny.msg(channel, res[2] + " Will Now Be Singing " + str(res[0]))
+					phenny.msg(channel, "%s will now be singing %s" % (res[2], os.path.basename(res[0])))
 
 				PLAYERS = { }
 
@@ -217,7 +217,7 @@ def setup(phenny):
 					time.sleep(1)
 
 				for channel in phenny.config.channels:
-					phenny.msg(channel, "Done playing: " + str(res[0]))
+					phenny.msg(channel, "Done playing: %s" % (os.path.basename(res[0])))
 
 				time.sleep(10)
 
@@ -235,6 +235,3 @@ init()
 
 if __name__ == '__main__':
 	find(None, 'all')
-
-
-
