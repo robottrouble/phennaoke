@@ -4,7 +4,7 @@ import os, re, time, threading, datetime, subprocess
 import sqlite3
 
 SQLITE_DB='/tmp/example.db'
-CDG_DIR='/tmp/cdg'
+CDG_DIR='/Users/adam/karaoke'
 PYCDG_PATH='/Users/adam/Downloads/pykaraoke-0.7.3/'
 
 def create_db_tables():
@@ -106,7 +106,7 @@ def find(phenny, input):
 
 	for row in search_songs(sWords):
 		phenny.write(('PRIVMSG', input.nick), str(row[0]) + ": " + os.path.basename(str(row[1])))
-		time.sleep(.5)
+		time.sleep(1)
 
 	phenny.write(('PRIVMSG', input.nick), "End Results")
 	
@@ -115,6 +115,9 @@ find.priority = 'medium'
 
 	
 def rebuild_cache(phenny, input):
+	if not input.admin:
+		return
+
 	files = get_cdg_files(CDG_DIR)
 	phenny.say("Updating cache for " + str(len(files)) + " files...")
 
@@ -159,7 +162,8 @@ queue.commands = ['queue']
 queue.priority = 'medium'
 
 def abort(phenny, input):
-	set_abort(1)
+	if input.admin:
+		set_abort(1)
 
 abort.commands = ['abort']
 abort.priority = 'medium'
@@ -171,7 +175,7 @@ def get_cdg_files(dir):
 	file_list = []
 	for f in os.listdir(dir):
 		if os.path.isfile(dir + "/" + f):
-			if f.endswith(".cdg"):
+			if f.endswith(".cdg") or f.endswith(".mp4"):
 				file_list.append(dir + "/" + f)		
 		else:
 			subdirlist.append(os.path.join(basedir, f))
@@ -197,8 +201,14 @@ def setup(phenny):
 				for channel in phenny.config.channels:
 					phenny.msg(channel, res[2] + " Will Now Be Singing " + str(res[0]))
 
-				playCMD = PYCDG_PATH + '/pycdg.py'
-				p = subprocess.Popen(["python", playCMD, "-w 800", "-h 600", res[0]])
+				PLAYERS = { }
+
+				PLAYERS['cdg'] = ["python", PYCDG_PATH + '/pycdg.py', "-w 800", "-h 600", res[0]]
+				PLAYERS['mp4'] = ["mplayer", "-fs", res[0]]
+
+				ext = res[0].lower()[len(res[0]) - 3:len(res[0])]
+
+				p = subprocess.Popen(PLAYERS[ext])
 
 				while p.poll() is None:
 					if check_abort():
