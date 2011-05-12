@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
-import os, re, time, threading, datetime, subprocess
-import sqlite3
+import os, sys, re, time, threading, datetime, subprocess, sqlite3, tweepy
 
 SQLITE_DB='/tmp/example.db'
 CDG_DIR='/Users/adam/karaoke'
@@ -12,9 +11,34 @@ def create_db_tables():
 	c=conn.cursor().execute('''CREATE TABLE IF NOT EXISTS songs (id INTEGER PRIMARY KEY, filename TEXT UNIQUE);''')
 	c=conn.cursor().execute('''CREATE TABLE IF NOT EXISTS playlist (id INTEGER PRIMARY KEY, song_id INTEGER, played BOOLEAN, timestamp TIMESTAMP, nick TEXT);''')
 	c=conn.cursor().execute('''CREATE TABLE IF NOT EXISTS abort (id INTEGER PRIMARY KEY, abort BOOLEAN);''')
+	c=conn.cursor().execute('''CREATE TABLE IF NOT EXISTS twitter (id INTEGER PRIMARY KEY, consumer_key TEXT, consumer_secret TEXT, access_key TEXT, access_secret TEXT);''')
+	c=conn.cursor().execute('''CREATE TABLE IF NOT EXISTS user (id INTEGER PRIMARY KEY, nick TEXT UNIQUE, twitter TEXT);''')
 	c=conn.cursor().execute('''INSERT OR IGNORE INTO abort ( id, abort ) VALUES ( 1, 0 );''')
 	conn.commit()
 	conn.close()
+
+def get_twitter_credentials():
+	cn = sqlite3.connect(SQLITE_DB)
+	cn.text_factory = str
+	c = cn.cursor().execute("""SELECT consumer_key, consumer_secret, access_key, access_secret FROM twitter WHERE id = 1;""")
+	ret = c.fetchone()
+	cn.close()
+	return ret
+
+def register_user(nick, twitter):
+	cn = sqlite3.connect(SQLITE_DB)
+	cn.text_factory = str
+	c = cn.cursor().execute("""INSERT OR REPLACE INTO user (nick, twitter) VALUES (?, ?);""", [nick, twitter])
+	cn.commit()	
+	cn.close()
+
+def get_user_info(nick):
+	cn = sqlite3.connect(SQLITE_DB)
+	cn.text_factory = str
+	c = cn.cursor().execute("""SELECT id, nick, twitter FROM user WHERE nick = ?""", [nick])
+	ret = c.fetchone()
+	cn.close()
+	return ret
 
 def insert_song(fileName):
 	cn = sqlite3.connect(SQLITE_DB)
@@ -113,7 +137,19 @@ def find(phenny, input):
 find.commands = ['find']
 find.priority = 'medium'
 
-	
+def register(phenny, input):
+	args = re.sub("\.find\ ?", "", input).split(" ")
+
+	if len(args) < 2:
+		phenny.write(('PRIVMSG', input.nick), "Register requires more than one argument")
+		return
+
+	register_user(input.nick, args[1])
+	phenny.write(('PRIVMSG', input.nick), "Registered user %s to twitter account %s!" % (input.nick, args[1]))
+
+register.commands = ['register']
+register.priority = 'medium'
+
 def rebuild_cache(phenny, input):
 	if not input.admin:
 		return
@@ -129,7 +165,6 @@ def rebuild_cache(phenny, input):
 rebuild_cache.commands = ['rebuild_cache']
 rebuild_cache.priority = 'medium'
 
-
 def play(phenny, input):
 	args = re.sub("\.play\ ?", "", input).split(" ")
 
@@ -143,7 +178,7 @@ def play(phenny, input):
 	song = get_song(args[0])
 
 	if song == None or len(song) < 2:
-		phenny.say("Song ID %d not found..." % (res[0]))
+		phenny.say("Song ID %d not found..." % (args[0]))
 		return
 
 	playFile = str(song[0])
@@ -168,7 +203,6 @@ def abort(phenny, input):
 abort.commands = ['abort']
 abort.priority = 'medium'
 
-
 def get_cdg_files(dir):
 	basedir = dir
 	subdirlist = []
@@ -188,6 +222,13 @@ def get_cdg_files(dir):
 
 def setup(phenny): 
 	def monitor(phenny): 
+		twitter = None
+		auth_info = get_twitter_credentials()
+
+		if auth_info != None and len(auth_info) > 3:
+			auth = tweepy.OAuthHandler(auth_info[0], auth_info[1])
+			auth.set_access_token(auth_info[2], auth_info[3])
+			twitter = tweepy.API(auth)
 
 		time.sleep(5)
 		while True: 
@@ -199,7 +240,23 @@ def setup(phenny):
 				cn.commit()
 
 				for channel in phenny.config.channels:
-					phenny.msg(channel, "%s will now be singing %s" % (res[2], os.path.basename(res[0])))
+					play_message = "%s will now be singing %s" % (res[2], os.path.basename(res[0]))
+
+					user_info = get_user_info(res[2])
+					twitter_user = res[2]
+
+					if user_info != None:	
+						twitter_user = "@" + str(user_info[2])
+							
+					twitter_message = ". %s will now be singing %s" % (twitter_user, os.path.basename(res[0]))
+
+					phenny.msg(channel, play_message)
+
+					if twitter != None:
+						try: 
+							twitter.update_status(twitter_message)
+						except tweepy.error.TweepError, e:
+							print "Twitter error({0}): {1}".format(e.response.status, e.reason)
 
 				PLAYERS = { }
 
